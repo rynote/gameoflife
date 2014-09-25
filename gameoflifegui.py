@@ -32,12 +32,30 @@
 """
 
 
-import pygame, random, time, random
+import pygame, random, time, random, os
+import RPi.GPIO as GPIO
+
 from pygame.locals import *
 from boxes import Box
 
-MAX_X = 80
-MAX_Y = 40
+# Init framebuffer/touchscreen environment variables
+os.putenv('SDL_VIDEODRIVER', 'fbcon')
+os.putenv('SDL_FBDEV'      , '/dev/fb1')
+os.putenv('SDL_MOUSEDRV'   , 'TSLIB')
+os.putenv('SDL_MOUSEDEV'   , '/dev/input/touchscreen')
+
+#set up GPIO using BCM numbering
+GPIO.setmode(GPIO.BCM)
+
+ENTER = 18 # right most button, the 4th button
+KEYB = 21 # to the left of 18, the 3rd button
+
+GPIO.setup(ENTER, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+GPIO.setup(KEYB, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+
+
+MAX_X = 32
+MAX_Y = 24
 SIZE = 10
 DEBUG = False
 
@@ -56,6 +74,7 @@ for i in range(MAX_X):
 pygame.init()
 pygame.display.set_caption('Conway\'s Game of Life by jparmstrong.com')
 screen = pygame.display.set_mode([MAX_X * SIZE, MAX_Y * SIZE])
+pygame.mouse.set_visible(0)
 
 
 # MAKING THE BOARD
@@ -159,90 +178,68 @@ def updateDisplay():
             elif keep_background == False:
                 boxes[dx][dy] = Box([0, 0, 0], [dx * SIZE, dy * SIZE], SIZE)
 
-            screen.blit(boxes[dx][dy].image, boxes[dx][dy].rect)
+            try:
+                screen.blit(boxes[dx][dy].image, boxes[dx][dy].rect)
+            except:
+                pass
     
     pygame.display.update()
 
+def initCallback():
+    GPIO.add_event_detect(ENTER,GPIO.FALLING, callback=cb_ButtonEnter, bouncetime=100)
+    GPIO.add_event_detect(KEYB,GPIO.FALLING, callback=cb_ButtonK, bouncetime=100)
 
+def disableCallback():
+    GPIO.remove_event_detect(ENTER) #remove to avoid some queueing it seemed
+    GPIO.remove_event_detect(KEYB) #remove to avoid some queueing it seemed
 
-running = True
+def cb_ButtonEnter(x):
+    global running
+    running = not running
+
+def cb_ButtonK(x):
+    global running
+    keep_background = not keep_background
+    
+initCallback()
+running = False
 button_down = False
 keys = pygame.key.get_pressed()
 
+for i in range(random.randint(10, 20)):
+    sx = random.randint(0, MAX_X)
+    sy = random.randint(0, MAX_Y)
 
-while running:
-    for event in pygame.event.get():
+    if random.randint(0, 1) == 1:
+        board[borderless(sx + 1, MAX_X)][borderless(sy + 0, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 2, MAX_X)][borderless(sy + 1, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 0, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 1, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 2, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
+    else:
+        board[borderless(sx + 1, MAX_X)][borderless(sy + 0, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 0, MAX_X)][borderless(sy + 1, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 0, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 1, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
+        board[borderless(sx + 2, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
 
-        if event.type == QUIT:
-            exit()
-        if event.type == KEYDOWN and event.key == K_ESCAPE:
-            exit()
-            
-        if event.type == KEYDOWN and event.key == K_RETURN:
-            running = False
-             
-        if event.type == KEYDOWN and event.key == K_r:
-            # SETTING UP RANDOM GLYDERS
-            for i in range(random.randint(10, 20)):
-                sx = random.randint(0, MAX_X)
-                sy = random.randint(0, MAX_Y)
-
-                if random.randint(0, 1) == 1:
-                    board[borderless(sx + 1, MAX_X)][borderless(sy + 0, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 2, MAX_X)][borderless(sy + 1, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 0, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 1, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 2, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
-                else:
-                    board[borderless(sx + 1, MAX_X)][borderless(sy + 0, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 0, MAX_X)][borderless(sy + 1, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 0, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 1, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
-                    board[borderless(sx + 2, MAX_X)][borderless(sy + 2, MAX_Y)] = LIVE_CELL;
-
-            updateDisplay()
-                        
-        if event.type == MOUSEBUTTONDOWN:
-            button_down = True
-            button_type = event.button
-            
-        if event.type == MOUSEBUTTONUP:
-            button_down = False
-            
-        if button_down:
-
-            mouse_x, mouse_y = pygame.mouse.get_pos()
-
-            sp_x = mouse_x / SIZE;
-            sp_y = mouse_y / SIZE;
-
-            if button_type == 1:
-                board[sp_x][sp_y] = LIVE_CELL;
-            elif button_type == 3:
-                board[sp_x][sp_y] = DEAD_CELL;
-                
-            updateDisplay()
+    
+updateDisplay()
 
 
 running = True
 rand_col = True
 
-while running:
-    for event in pygame.event.get():
-             
-        if event.type == KEYDOWN and event.key == K_b:
-            if keep_background == False:
-                keep_background = True
-            else:
-                keep_background = False
-
-        if event.type == QUIT:
-                running = False
-        if event.type == KEYDOWN and event.key == K_ESCAPE:
-                running = False
-                
+try:
+    while running:
+            updateDisplay()
+            rulesOfLife(board)
+            pygame.time.delay(10)
     
-    updateDisplay()
-    rulesOfLife(board)
-    pygame.time.delay(10)
+except KeyboardInterrupt:  
+    GPIO.cleanup()       # clean up GPIO on CTRL+C exit  
+    
+GPIO.cleanup()           # clean up GPIO on normal exit  
+
+
         
